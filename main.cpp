@@ -9,6 +9,10 @@
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <net/if.h>
+#include <map>
+#include <string>
+#include <cstdlib>
+#include <unistd.h>
 #include "radiotap.h"
 
 void usage() {
@@ -17,22 +21,27 @@ void usage() {
 }
 
 int main(int argc, char* argv[]) {
-    uint8_t BSSID[6];
+    char BSSID[12];
+    std::string keyBSSID;
     int8_t PWR;
-    int16_t Beacons;
+    // int16_t Beacons;
+    std::map<std::string, int> Beacons;
     int16_t Data;
     int16_t CH;
     int16_t MB;
     char* ENC;
     char* CIPHER;
     char* AUTH;
-    char* ESSID;
+    char ESSID[32];
+    std::string keyESSID;
     uint8_t STATION[6];
     // Rate;
     // Lost;
     // Frames;
     // Notes;
     // Probes;
+    
+    std::map<std::string, PackerInfo> APs;
 
 	if (argc != 2) {
 		usage();
@@ -41,7 +50,8 @@ int main(int argc, char* argv[]) {
 
     char* dev = argv[1];
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+	// pcap_t* pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+    pcap_t* pcap = pcap_open_offline("wlan0.pcap", errbuf);
 	if (pcap == nullptr) {
 		fprintf(stderr, "couldn't open device %s(%s)\n", dev, errbuf);
 		return -1;
@@ -52,11 +62,9 @@ int main(int argc, char* argv[]) {
     uint32_t* tempPresent;
     int numberOfPresent;
 
-
-
-
     while (true) {
-        printf("\n");
+        printf("\033[2J\033[H");
+
 
         present.clear();
         iter = present.begin();
@@ -113,12 +121,31 @@ int main(int argc, char* argv[]) {
             case 0x80: {
                 printf("Beacon frame\n");
                 struct BeaconFrame* beaconFrame = (struct BeaconFrame*)(packet + radiotap->len);
-                printf("%02x:%02x:%02x:%02x:%02x:%02x\n", beaconFrame->BSSID[0], beaconFrame->BSSID[1], beaconFrame->BSSID[2], beaconFrame->BSSID[3], beaconFrame->BSSID[4], beaconFrame->BSSID[5]);
-                // printf("SSID len : %d\nSSID : ", beaconFrame->ssidParameter.len);
+                // printBSSID(beaconFrame->BSSID);
+                sprintf((char*)BSSID, "%02x:%02x:%02x:%02x:%02x:%02x", beaconFrame->BSSID[0], beaconFrame->BSSID[1], beaconFrame->BSSID[2], beaconFrame->BSSID[3], beaconFrame->BSSID[4], beaconFrame->BSSID[5]);
+                printf("BSSID : %s\n", BSSID);
+                
                 for (int i = 0; i < beaconFrame->ssidParameter.len; i++) {
-                    printf("%c", beaconFrame->ssidParameter.SSID[i]);
+                    ESSID[i] = beaconFrame->ssidParameter.SSID[i];
                 }
-                printf("\n");
+                ESSID[beaconFrame->ssidParameter.len] = '\0';
+                printf("ESSID : %s\n", ESSID);
+
+                keyESSID = ESSID;
+                keyBSSID = BSSID;
+                auto it = Beacons.find(keyBSSID);
+
+                if (it != Beacons.end()) {
+                    it->second += 1;
+                } else {
+                    Beacons[keyBSSID] = 1;
+                }
+
+                // PackerInfo tempPacket = {*BSSID, Beacons[keyESSID], *ESSID};
+                // APs[tempPacket.ESSID] = tempPacket;
+                // printf("%s %d %s\n", tempPacket.BSSID, tempPacket.Beacons, tempPacket.ESSID);
+                // std::memcpy(&APs[])
+
                 break;
             }
             case 0x84:
@@ -143,9 +170,25 @@ int main(int argc, char* argv[]) {
                 break;
         }
 
+        // sleep(0.1);
+        // system("clear");
 
-
+        // printf("Beacons : %s %d\n", ESSID, Beacons[ESSID]);
+        printf("Beacons\n");
+        for (const auto& pair : Beacons) {
+            printf("%s %d\n", pair.first.c_str(), pair.second);
+        }
 	}
 
+        printf("Beacons\n");
+        for (const auto& pair : Beacons) {
+            printf("%s %d\n", pair.first.c_str(), pair.second);
+        }
+
+        printf("APs\n");
+        for (const auto& pair : APs) {
+            printf("%s %d\n", pair.first.c_str(), pair.second.Beacons);
+            // printBSSID(pair.second->BSSID);
+        }
 	pcap_close(pcap);
 }
