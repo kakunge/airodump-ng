@@ -17,8 +17,11 @@
 #include "radiotap.h"
 
 void usage() {
-	printf("syntax : airodump <interface>\n");
-	printf("sample : airodump wlan0\n");
+	printf("syntax : airodump <option> <interface>\n");
+	printf("sample : airodump --on wlan0\n\n");
+    printf("options\n");
+    printf("  --on <interface> : use pcap_open_live function\n");
+    printf("  --off <filename> : use pcap_open_offline function\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -40,23 +43,38 @@ int main(int argc, char* argv[]) {
     char ESSID[32];
     std::string stringESSID;
     std::map<std::string, std::string> ESSIDs;
-    uint8_t STATION[6];
 
-    printf("\033[2J");
+    char STATION[12];
+    std::string stringSTATION;
+    std::map<std::string, std::string> STATIONs;
 
-	if (argc != 2) {
+	if (argc != 3) {
 		usage();
 		return -1;
 	}
 
-    char* dev = argv[1];
+    char* mode = argv[1];
+    char* dev = argv[2];
+    pcap_t* pcap;
 	char errbuf[PCAP_ERRBUF_SIZE];
-	pcap_t* pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+
+    if (!strcmp(mode, "--on")) {
+        pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
+    }
+    else if (!strcmp(mode, "--off")) {
+        pcap = pcap_open_offline(dev, errbuf);
+    }
+    else {
+        usage();
+    }
+	// pcap_t* pcap = pcap_open_live(dev, BUFSIZ, 1, 1, errbuf);
     // pcap_t* pcap = pcap_open_offline("wlan0.pcap", errbuf);
 	if (pcap == nullptr) {
 		fprintf(stderr, "couldn't open device %s(%s)\n", dev, errbuf);
 		return -1;
 	}
+
+    printf("\033[2J");
 
     std::list<uint32_t> present;
     std::list<uint32_t>::iterator iter;
@@ -67,7 +85,7 @@ int main(int argc, char* argv[]) {
         endTime = std::time(nullptr);
         printf("\033[H");
         printf("[ Elapsed %ds ]\n\n", endTime - startTime);
-        printf("%s%24s\t%s\n\n", "BSSID", "Beacons", "ESSID");
+        printf("%s%24s%12s\t%s\n\n", "BSSID", "Beacons", "PWR", "ESSID");
 
 
         present.clear();
@@ -123,21 +141,43 @@ int main(int argc, char* argv[]) {
                 printf("\n");
                 break;
             case 0x80: {
-                // printf("Beacon frame\n");
+                printf("Beacon frame\n");
+                printf("PWR : %d\n", radiotap->anteSig);
                 struct BeaconFrame* beaconFrame = (struct BeaconFrame*)(packet + radiotap->len);
                 // printBSSID(beaconFrame->BSSID);
                 sprintf((char*)BSSID, "%02x:%02x:%02x:%02x:%02x:%02x", beaconFrame->BSSID[0], beaconFrame->BSSID[1], beaconFrame->BSSID[2], beaconFrame->BSSID[3], beaconFrame->BSSID[4], beaconFrame->BSSID[5]);
                 // printf("BSSID : %s\n", BSSID);
-                
-                for (int i = 0; i < beaconFrame->ssidParameter.len; i++) {
-                    ESSID[i] = beaconFrame->ssidParameter.SSID[i];
+
+                // ------
+
+                struct TaggedParameter* taggedParameter;
+                taggedParameter = (struct TaggedParameter*)(packet + radiotap->len + 36);
+
+                printf("num : 0x%02x\n", taggedParameter->tagNumber);
+
+                if (taggedParameter->tagNumber == 0x00) {
+                    printf("SSID\n");
+                    for (int i = 0; i < taggedParameter->len; i++) {
+                        ESSID[i] = taggedParameter->data[i];
+                    }
+                    ESSID[taggedParameter->len] = '\0';
                 }
-                ESSID[beaconFrame->ssidParameter.len] = '\0';
+
+                // ------
+                
+                // for (int i = 0; i < beaconFrame->ssidParameter.len; i++) {
+                //     ESSID[i] = beaconFrame->ssidParameter.SSID[i];
+                // }
+                // ESSID[beaconFrame->ssidParameter.len] = '\0';
                 // printf("ESSID : %s\n", ESSID);
+
+                // ------
 
                 stringBSSID = BSSID;
                 stringESSID = ESSID;
                 auto it = Beacons.find(stringBSSID);
+
+                PWRs[stringBSSID] = radiotap->anteSig;
 
                 if (it != Beacons.end()) {
                     it->second += 1;
@@ -180,7 +220,7 @@ int main(int argc, char* argv[]) {
 
         // printf("Beacons\n");
         for (const auto& pair : Beacons) {
-            printf("%s%12d\t%-32s\n", pair.first.c_str(), pair.second, ESSIDs[pair.first].c_str());
+            printf("%s%12d%12d\t%-32s\n", pair.first.c_str(), pair.second, PWRs[pair.first], ESSIDs[pair.first].c_str());
         }
 
         sleep(0.1);
@@ -188,7 +228,7 @@ int main(int argc, char* argv[]) {
 
         // printf("Beacons\n");
         for (const auto& pair : Beacons) {
-            printf("%s%12d\t%-32s\n", pair.first.c_str(), pair.second, ESSIDs[pair.first].c_str());
+            printf("%s%12d%12d\t%-32s\n", pair.first.c_str(), pair.second, PWRs[pair.first], ESSIDs[pair.first].c_str());
         }
 	pcap_close(pcap);
 }
