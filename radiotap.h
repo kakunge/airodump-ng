@@ -74,7 +74,29 @@ struct ProbeResponse : Dot11Frame {
 };
 
 struct NullFunction : Dot11Frame {
+    uint16_t duration;
+    uint8_t BSSID[6];
+    uint8_t sourAddr[6];
+    uint8_t destAddr[6];
+    uint16_t seqControl;
+};
 
+struct QoSData : Dot11Frame {
+    uint16_t duration;
+    uint8_t BSSID[6];
+    uint8_t sourAddr[6];
+    uint8_t destAddr[6];
+    uint8_t STAAddr[6];
+    uint16_t seqControl;
+};
+
+struct QoSNullFunction : Dot11Frame {
+    uint16_t duration;
+    uint8_t BSSID[6];
+    uint8_t sourAddr[6];
+    uint8_t destAddr[6];
+    uint8_t STAAddr[6];
+    uint16_t seqControl;
 };
 
 struct Acknowledgement : Dot11Frame {
